@@ -247,7 +247,15 @@ object ImportResolver {
     private def getUri(toLookup: WorkflowUrl): Either[NonEmptyList[WorkflowSource], ResolvedImportBundle] = {
       implicit val sttpBackend = HttpResolver.sttpBackend()
 
-      // TODO: clean this up
+      def retryRequestIfNeeded(initialResult: Response[WorkflowSource]): Response[WorkflowSource] = {
+        val additionalHeaders = authHeaders(uri"$toLookup")
+
+        // retry the request only if additional headers are found else return original result
+        if (additionalHeaders.nonEmpty) {
+          val retryResponseIO: IO[Response[WorkflowSource]] = sttp.get(uri"$toLookup").headers(headers ++ additionalHeaders).send()
+          Await.result(retryResponseIO.unsafeToFuture(), 15.seconds)
+        } else initialResult
+      }
 
       val responseIO: IO[Response[WorkflowSource]] = sttp.get(uri"$toLookup").headers(headers).send()
 
@@ -257,26 +265,11 @@ object ImportResolver {
 
       // if status code returned is 404, its possible this is a private workflow. Hence retry after fetching additional
       // headers (if any)
-      val checkedResult: Checked[WorkflowSource] = if (result.code == StatusCodes.NotFound && authProviders.nonEmpty) {
-        val additionalHeaders = authHeaders(uri"$toLookup")
+      val finalResult = if (result.code == StatusCodes.NotFound && authProviders.nonEmpty) retryRequestIfNeeded(result) else result
 
-        if (additionalHeaders.nonEmpty) {
-          val retryResponseIO: IO[Response[WorkflowSource]] = sttp.get(uri"$toLookup").headers(headers ++ additionalHeaders).send()
-          Await.result(retryResponseIO.unsafeToFuture(), 15.seconds).body.leftMap { e =>
-            NonEmptyList(e.trim, List.empty)
-          }
-        } else {
-          result.body.leftMap { e =>
-            NonEmptyList(e.trim, List.empty)
-          }
-        }
-      } else {
-        result.body.leftMap { e =>
-          NonEmptyList(e.trim, List.empty)
-        }
-      }
-
-      checkedResult map {
+      finalResult.body.leftMap { e =>
+        NonEmptyList(e.trim, List.empty)
+      } map {
         ResolvedImportBundle(_, newResolverList(toLookup), ResolvedImportRecord(toLookup))
       }
     }
