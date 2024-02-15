@@ -247,16 +247,36 @@ object ImportResolver {
     private def getUri(toLookup: WorkflowUrl): Either[NonEmptyList[WorkflowSource], ResolvedImportBundle] = {
       implicit val sttpBackend = HttpResolver.sttpBackend()
 
-      val authAmendedHeaders = headers ++ authHeaders(uri"$toLookup")
-      val responseIO: IO[Response[WorkflowSource]] = sttp.get(uri"$toLookup").headers(authAmendedHeaders).send()
+      // TODO: clean this up
+
+      val responseIO: IO[Response[WorkflowSource]] = sttp.get(uri"$toLookup").headers(headers).send()
 
       // temporary situation to get functionality working before
       // starting in on async-ifying the entire WdlNamespace flow
-      val result: Checked[WorkflowSource] = Await.result(responseIO.unsafeToFuture(), 15.seconds).body.leftMap { e =>
-        NonEmptyList(e.toString.trim, List.empty)
+      val result: Response[WorkflowSource] = Await.result(responseIO.unsafeToFuture(), 15.seconds)
+
+      // if status code returned is 404, its possible this is a private workflow. Hence retry after fetching additional
+      // headers (if any)
+      val checkedResult: Checked[WorkflowSource] = if (result.code == StatusCodes.NotFound && authProviders.nonEmpty) {
+        val additionalHeaders = authHeaders(uri"$toLookup")
+
+        if (additionalHeaders.nonEmpty) {
+          val retryResponseIO: IO[Response[WorkflowSource]] = sttp.get(uri"$toLookup").headers(headers ++ additionalHeaders).send()
+          Await.result(retryResponseIO.unsafeToFuture(), 15.seconds).body.leftMap { e =>
+            NonEmptyList(e.trim, List.empty)
+          }
+        } else {
+          result.body.leftMap { e =>
+            NonEmptyList(e.trim, List.empty)
+          }
+        }
+      } else {
+        result.body.leftMap { e =>
+          NonEmptyList(e.trim, List.empty)
+        }
       }
 
-      result map {
+      checkedResult map {
         ResolvedImportBundle(_, newResolverList(toLookup), ResolvedImportRecord(toLookup))
       }
     }
