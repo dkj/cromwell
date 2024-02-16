@@ -10,7 +10,8 @@ import cromwell.core.labels.Labels
 import cromwell.engine.backend.{BackendConfigurationEntry, CromwellBackends}
 import cromwell.engine.workflow.lifecycle.materialization.MaterializeWorkflowDescriptorActor
 import cromwell.engine.workflow.lifecycle.materialization.MaterializeWorkflowDescriptorActor.{MaterializeWorkflowDescriptorCommand, MaterializeWorkflowDescriptorFailureResponse, MaterializeWorkflowDescriptorSuccessResponse}
-import cromwell.services.auth.impl.GithubAuthVendingActor.GithubAuthVendingSupport
+import cromwell.languages.util.ImportResolver.GithubImportAuthProvider
+import cromwell.services.auth.GithubAuthVendingSupport
 import cromwell.util.SampleWdl.HelloWorld
 import cromwell.{CromwellTestKitSpec, CromwellTestKitWordSpec}
 import org.scalatest.BeforeAndAfter
@@ -755,6 +756,7 @@ class MaterializeWorkflowDescriptorActorSpec extends CromwellTestKitWordSpec wit
       MaterializeWorkflowDescriptorActor.getImportAuthProviders(azurePrivateWorkflowConfig, importAuthProvider) match {
         case Valid(providers) =>
           providers.size shouldBe 1
+          providers.head.isInstanceOf[GithubImportAuthProvider] shouldBe true
           providers.head.validHosts shouldBe List("github.com", "githubusercontent.com", "raw.githubusercontent.com")
         case Invalid(e) => fail(s"Unexpected failure: $e")
       }

@@ -51,7 +51,7 @@ import wom.graph.GraphNodePort.OutputPort
 import wom.runtime.WomOutputRuntimeExtractor
 import wom.values.{WomString, WomValue}
 import cromwell.languages.util.ImportResolver.ImportAuthProvider
-import cromwell.services.auth.impl.GithubAuthVendingActor.GithubAuthVendingSupport
+import cromwell.services.auth.GithubAuthVendingSupport
 
 import scala.concurrent.Future
 import scala.concurrent.duration.DurationInt
