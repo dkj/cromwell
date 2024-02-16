@@ -1,6 +1,6 @@
 package cromwell.engine.workflow.lifecycle
 
-import akka.actor.Props
+import akka.actor.{ActorRef, Props}
 import akka.testkit.TestDuration
 import cats.data.Validated.{Invalid, Valid}
 import com.typesafe.config.ConfigFactory
@@ -9,11 +9,8 @@ import cromwell.core._
 import cromwell.core.labels.Labels
 import cromwell.engine.backend.{BackendConfigurationEntry, CromwellBackends}
 import cromwell.engine.workflow.lifecycle.materialization.MaterializeWorkflowDescriptorActor
-import cromwell.engine.workflow.lifecycle.materialization.MaterializeWorkflowDescriptorActor.{
-  MaterializeWorkflowDescriptorCommand,
-  MaterializeWorkflowDescriptorFailureResponse,
-  MaterializeWorkflowDescriptorSuccessResponse
-}
+import cromwell.engine.workflow.lifecycle.materialization.MaterializeWorkflowDescriptorActor.{MaterializeWorkflowDescriptorCommand, MaterializeWorkflowDescriptorFailureResponse, MaterializeWorkflowDescriptorSuccessResponse}
+import cromwell.services.auth.impl.GithubAuthVendingActor.GithubAuthVendingSupport
 import cromwell.util.SampleWdl.HelloWorld
 import cromwell.{CromwellTestKitSpec, CromwellTestKitWordSpec}
 import org.scalatest.BeforeAndAfter
@@ -23,7 +20,7 @@ import wom.values.{WomInteger, WomString}
 
 import scala.concurrent.duration._
 
-class MaterializeWorkflowDescriptorActorSpec extends CromwellTestKitWordSpec with BeforeAndAfter {
+class MaterializeWorkflowDescriptorActorSpec extends CromwellTestKitWordSpec with BeforeAndAfter with GithubAuthVendingSupport  {
 
   private val ioActor = system.actorOf(SimpleIoActor.props)
   private val workflowId = WorkflowId.randomId()
@@ -45,6 +42,22 @@ class MaterializeWorkflowDescriptorActorSpec extends CromwellTestKitWordSpec wit
         |  providers {
         |    DefaultBackend {}
         |    SpecifiedBackend {}
+        |  }
+        |}
+        |""".stripMargin
+    )
+    .withFallback(CromwellTestKitSpec.DefaultConfig)
+  private val azurePrivateWorkflowConfig = ConfigFactory
+    .parseString(
+      """
+        |backend {
+        |  default = "Local"
+        |}
+        |
+        |private-workflows {
+        |  enabled = true
+        |  auth {
+        |    azure = true
         |  }
         |}
         |""".stripMargin
@@ -88,6 +101,8 @@ class MaterializeWorkflowDescriptorActorSpec extends CromwellTestKitWordSpec wit
   }
 
   private val fooHogGroup = HogGroup("foo")
+
+  override def serviceRegistryActor: ActorRef = NoBehaviorActor
 
   "MaterializeWorkflowDescriptorActor" should {
     "accept valid WDL, inputs and options files" in {
@@ -734,6 +749,22 @@ class MaterializeWorkflowDescriptorActorSpec extends CromwellTestKitWordSpec wit
       }
 
       system.stop(materializeWfActor)
+    }
+
+    "return Github import auth provider when private workflows in Azure is enabled" in {
+      MaterializeWorkflowDescriptorActor.getImportAuthProviders(azurePrivateWorkflowConfig, importAuthProvider) match {
+        case Valid(providers) =>
+          providers.size shouldBe 1
+          providers.head.validHosts shouldBe List("github.com", "githubusercontent.com", "raw.githubusercontent.com")
+        case Invalid(e) => fail(s"Unexpected failure: $e")
+      }
+    }
+
+    "return no import auth provider when private workflows is disabled" in {
+      MaterializeWorkflowDescriptorActor.getImportAuthProviders(minimumConf, importAuthProvider) match {
+        case Valid(providers) => providers.size shouldBe 0
+        case Invalid(e) => fail(s"Unexpected failure: $e")
+      }
     }
   }
 }

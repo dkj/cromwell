@@ -185,6 +185,21 @@ object MaterializeWorkflowDescriptorActor {
         s"'$optionName' is specified in workflow options but value is not of expected Double type: ${e.getMessage}".invalidNel
     }
   }
+
+  def getImportAuthProviders(conf: Config, authProviderFunc: String => ImportAuthProvider): ErrorOr[List[ImportAuthProvider]] = {
+    val isPrivateWorkflowsEnabled = conf.as[Boolean]("private-workflows.enabled")
+    val isAuthAzure = if (conf.hasPath("private-workflows.auth.azure")) {
+      conf.as[Boolean]("private-workflows.auth.azure")
+    } else false
+
+    if (isPrivateWorkflowsEnabled && isAuthAzure) {
+      val azureToken = AzureCredentials.getAccessToken()
+      azureToken match {
+        case Valid(token) => List(authProviderFunc(token)).validNel
+        case Invalid(err) => s"Failed to fetch Azure token. Error: ${err.toString}".invalidNel
+      }
+    } else List.empty.validNel
+  }
 }
 
 // TODO WOM: need to decide where to draw the line between language specific initialization and WOM
@@ -207,7 +222,7 @@ class MaterializeWorkflowDescriptorActor(override val serviceRegistryActor: Acto
 
   val iOExecutionContext = context.system.dispatchers.lookup("akka.dispatchers.io-dispatcher")
   implicit val ec = context.dispatcher
-  implicit val timeout = Timeout(5.seconds) // Timeout.create(context.receiveTimeout.asJava) // TODO: what should this be?
+  implicit val timeout = Timeout(5.seconds) // TODO: what should this be?
 
   protected val pathBuilderFactories: List[PathBuilderFactory] = EngineFilesystems.configuredPathBuilderFactories
 
@@ -302,22 +317,6 @@ class MaterializeWorkflowDescriptorActor(override val serviceRegistryActor: Acto
     (sourceFiles.workflowOptions, pathBuilders)
   }
 
-  private def getImportAuthProviders(conf: Config): ErrorOr[List[ImportAuthProvider]] = {
-    val isPrivateWorkflowsEnabled = conf.as[Boolean]("private-workflows.enabled")
-    val isAuthAzure = if (conf.hasPath("private-workflows.auth.azure")) {
-      conf.as[Boolean]("private-workflows.auth.azure")
-    } else false
-
-    if (isPrivateWorkflowsEnabled && isAuthAzure) {
-      val azureToken = AzureCredentials.getAccessToken()
-      logger.info(s"*** FIND ME - getAccessToken during workflow materialization returned $azureToken")
-      azureToken match {
-        case Valid(token) => List(importAuthProvider(token)).validNel
-        case Invalid(err) => s"Failed to fetch Azure token. Error: ${err.toString}".invalidNel
-      }
-    } else List.empty.validNel
-  }
-
   private def buildWorkflowDescriptor(id: WorkflowId,
                                       sourceFiles: WorkflowSourceFilesCollection,
                                       conf: Config,
@@ -369,8 +368,7 @@ class MaterializeWorkflowDescriptorActor(override val serviceRegistryActor: Acto
     for {
       _ <- publishLabelsToMetadata(id, labels.asMap, serviceRegistryActor)
       zippedImportResolver <- zippedResolverCheck
-      importAuthProviders <- getImportAuthProviders(conf).toIOChecked
-      _ = logger.info(s"*** FIND ME - importAuthProviders are $importAuthProviders")
+      importAuthProviders <- getImportAuthProviders(conf, importAuthProvider).toIOChecked
       importResolvers = zippedImportResolver.toList ++ localFilesystemResolvers :+ HttpResolver(None, Map.empty, importAuthProviders)
       sourceAndResolvers <- fromEither[IO](
         LanguageFactoryUtil.findWorkflowSource(sourceFiles.workflowSource, sourceFiles.workflowUrl, importResolvers)
