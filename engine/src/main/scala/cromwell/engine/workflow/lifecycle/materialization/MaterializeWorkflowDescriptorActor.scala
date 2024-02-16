@@ -186,7 +186,9 @@ object MaterializeWorkflowDescriptorActor {
     }
   }
 
-  def getImportAuthProviders(conf: Config, authProviderFunc: String => ImportAuthProvider): ErrorOr[List[ImportAuthProvider]] = {
+  def getImportAuthProviders(conf: Config,
+                             authProviderFunc: String => ImportAuthProvider
+  ): ErrorOr[List[ImportAuthProvider]] = {
     val isPrivateWorkflowsEnabled = conf.as[Boolean]("private-workflows.enabled")
     val isAuthAzure = if (conf.hasPath("private-workflows.auth.azure")) {
       conf.as[Boolean]("private-workflows.auth.azure")
@@ -369,7 +371,10 @@ class MaterializeWorkflowDescriptorActor(override val serviceRegistryActor: Acto
       _ <- publishLabelsToMetadata(id, labels.asMap, serviceRegistryActor)
       zippedImportResolver <- zippedResolverCheck
       importAuthProviders <- getImportAuthProviders(conf, importAuthProvider).toIOChecked
-      importResolvers = zippedImportResolver.toList ++ localFilesystemResolvers :+ HttpResolver(None, Map.empty, importAuthProviders)
+      importResolvers = zippedImportResolver.toList ++ localFilesystemResolvers :+ HttpResolver(None,
+                                                                                                Map.empty,
+                                                                                                importAuthProviders
+      )
       sourceAndResolvers <- fromEither[IO](
         LanguageFactoryUtil.findWorkflowSource(sourceFiles.workflowSource, sourceFiles.workflowUrl, importResolvers)
       )

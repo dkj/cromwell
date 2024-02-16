@@ -9,7 +9,11 @@ import cromwell.core._
 import cromwell.core.labels.Labels
 import cromwell.engine.backend.{BackendConfigurationEntry, CromwellBackends}
 import cromwell.engine.workflow.lifecycle.materialization.MaterializeWorkflowDescriptorActor
-import cromwell.engine.workflow.lifecycle.materialization.MaterializeWorkflowDescriptorActor.{MaterializeWorkflowDescriptorCommand, MaterializeWorkflowDescriptorFailureResponse, MaterializeWorkflowDescriptorSuccessResponse}
+import cromwell.engine.workflow.lifecycle.materialization.MaterializeWorkflowDescriptorActor.{
+  MaterializeWorkflowDescriptorCommand,
+  MaterializeWorkflowDescriptorFailureResponse,
+  MaterializeWorkflowDescriptorSuccessResponse
+}
 import cromwell.languages.util.ImportResolver.GithubImportAuthProvider
 import cromwell.services.auth.GithubAuthVendingSupport
 import cromwell.util.SampleWdl.HelloWorld
@@ -21,7 +25,10 @@ import wom.values.{WomInteger, WomString}
 
 import scala.concurrent.duration._
 
-class MaterializeWorkflowDescriptorActorSpec extends CromwellTestKitWordSpec with BeforeAndAfter with GithubAuthVendingSupport  {
+class MaterializeWorkflowDescriptorActorSpec
+    extends CromwellTestKitWordSpec
+    with BeforeAndAfter
+    with GithubAuthVendingSupport {
 
   private val ioActor = system.actorOf(SimpleIoActor.props)
   private val workflowId = WorkflowId.randomId()
